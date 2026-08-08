@@ -2,10 +2,10 @@
 zafer_core.py — Ders materyalleri üzerinde RAG tabanlı asistan çekirdegi.
 
 Sorumluluklar:
-  - Materyal klasorunu tarayip parcalara (chunk) bolerek ChromaDB'ye yazmak
-  - Degismemis dosyalari yeniden islemeden atlamak (hash tabanli)
-  - Soru geldiginde ilgili parcalari bulup LLM'e context olarak vermek
-  - Konusma gecmisini sinirli tutmak
+- Materyal klasorunu tarayip parcalara (chunk) bolerek ChromaDB'ye yazmak
+- Degismemis dosyalari yeniden islemeden atlamak (hash tabanli)
+- Soru geldiginde ilgili parcalari bulup LLM'e context olarak vermek
+- Konusma gecmisini sinirli tutmak
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ load_dotenv()
 # --------------------------------------------------------------------------
 # Ayarlar
 # --------------------------------------------------------------------------
-
 DB_PATH = os.getenv("ZAFER_DB_PATH", "./zafer_hoca_db")
 COLLECTION = "zafer_hoca"
 
@@ -34,14 +33,17 @@ COLLECTION = "zafer_hoca"
 # Ingilizce odaklidir ve Turkce materyallerde arama kalitesi cok dusuktur.
 EMBED_MODEL = os.getenv("ZAFER_EMBED_MODEL", "intfloat/multilingual-e5-base")
 
-# OpenRouter model kimligi. Gecerli bir kimlik girmelisin —
-# guncel listeyi https://openrouter.ai/models adresinden kontrol et.
-LLM_MODEL = os.getenv("ZAFER_LLM_MODEL", "google/gemini-2.5-flash")
+# Anthropic model kimligi. Guncel liste: https://docs.claude.com/en/docs/about-claude/models
+LLM_MODEL = os.getenv("ZAFER_LLM_MODEL", "claude-haiku-4-5-20251001")
 
-CHUNK_CHARS = 1500       # her parcanin yaklasik uzunlugu
-CHUNK_OVERLAP = 200      # parcalar arasi bindirme (baglam kopmasin diye)
-N_RESULTS = 6            # her soruda cekilecek parca sayisi
-MAX_HISTORY_TURNS = 8    # hafizada tutulacak soru-cevap cifti sayisi
+# Anthropic'in OpenAI SDK uyumluluk endpoint'i — mevcut OpenAI istemcisini
+# (chat.completions.create) degistirmeden Claude modellerini kullanmamizi saglar.
+ANTHROPIC_OPENAI_BASE_URL = "https://api.anthropic.com/v1/"
+
+CHUNK_CHARS = 1500  # her parcanin yaklasik uzunlugu
+CHUNK_OVERLAP = 200  # parcalar arasi bindirme (baglam kopmasin diye)
+N_RESULTS = 6  # her soruda cekilecek parca sayisi
+MAX_HISTORY_TURNS = 8  # hafizada tutulacak soru-cevap cifti sayisi
 
 SUPPORTED = {".ipynb", ".py", ".txt", ".md", ".csv", ".pdf", ".docx", ".xlsx"}
 
@@ -49,7 +51,6 @@ SUPPORTED = {".ipynb", ".py", ".txt", ".md", ".csv", ".pdf", ".docx", ".xlsx"}
 # --------------------------------------------------------------------------
 # Dosya okuma
 # --------------------------------------------------------------------------
-
 def read_ipynb(path: pathlib.Path) -> str:
     """Notebook'u markdown + kod hucreleri olarak duz metne cevirir."""
     nb = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
@@ -127,7 +128,7 @@ def read_any(path: pathlib.Path) -> str:
             return read_xlsx(path)
         if path.suffix in SUPPORTED:
             return read_plain(path)
-    except Exception as exc:                      # ciplak except yerine: nedeni gorelim
+    except Exception as exc:  # ciplak except yerine: nedeni gorelim
         print(f"  [!] {path.name} okunamadi: {type(exc).__name__}: {exc}")
     return ""
 
@@ -135,7 +136,6 @@ def read_any(path: pathlib.Path) -> str:
 # --------------------------------------------------------------------------
 # Parcalama
 # --------------------------------------------------------------------------
-
 def chunk_text(text: str, size: int = CHUNK_CHARS, overlap: int = CHUNK_OVERLAP):
     """
     Metni bindirmeli parcalara boler. Mumkun oldugunca satir sonunda keser,
@@ -163,7 +163,6 @@ def chunk_text(text: str, size: int = CHUNK_CHARS, overlap: int = CHUNK_OVERLAP)
 # --------------------------------------------------------------------------
 # Vektor deposu
 # --------------------------------------------------------------------------
-
 def get_collection():
     embedder = embedding_functions.SentenceTransformerEmbeddingFunction(
         model_name=EMBED_MODEL
@@ -205,6 +204,7 @@ def index_folder(folder: str | pathlib.Path, force: bool = False) -> int:
         # "TIME SERIES/TimeSeriesAnalysis.ipynb" gibi yollar, icerigi kisa
         # dosyalarin bile konu aramasinda bulunmasini saglar.
         text = f"[KAYNAK: {rel}]\n{text}"
+
         file_key = hashlib.sha1(rel.encode()).hexdigest()[:12]
         content_hash = hashlib.sha1(text.encode()).hexdigest()[:12]
 
@@ -242,7 +242,6 @@ def index_folder(folder: str | pathlib.Path, force: bool = False) -> int:
 # --------------------------------------------------------------------------
 # Ajan
 # --------------------------------------------------------------------------
-
 SYSTEM_TEMPLATE = """Sen Zafer Hoca'nin ders materyallerine dayanan bir veri bilimi asistanisin.
 
 Calisma bicimin:
@@ -282,17 +281,18 @@ class ZaferHoca:
     _client: object = None
 
     def __post_init__(self):
-        api_key = os.getenv("OPENROUTER_API_KEY")
+        api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise RuntimeError(
-                "OPENROUTER_API_KEY tanimli degil. .env dosyasina ekle:\n"
-                "  OPENROUTER_API_KEY=sk-or-v1-..."
+                "ANTHROPIC_API_KEY tanimli degil. .env dosyasina ekle:\n"
+                "  ANTHROPIC_API_KEY=sk-ant-..."
             )
-        self._client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+        # Anthropic'in OpenAI SDK uyumluluk endpoint'i: mevcut OpenAI istemcisi
+        # ayni sekilde calisir, sadece base_url ve key Anthropic'e isaret eder.
+        self._client = OpenAI(base_url=ANTHROPIC_OPENAI_BASE_URL, api_key=api_key)
         self._col = get_collection()
 
     # -- yardimcilar --------------------------------------------------------
-
     def retrieve(self, query: str, n: int = N_RESULTS) -> str:
         """Soruyla ilgili materyal parcalarini tek bir context metnine cevirir."""
         if self._col.count() == 0:
@@ -320,7 +320,6 @@ class ZaferHoca:
             self.history = self.history[-keep:]
 
     # -- ana giris noktasi --------------------------------------------------
-
     def ask(self, message: str, attached_text: str | None = None) -> str:
         """
         Soru sorar. attached_text verilirse (yuklenen dosyanin icerigi)
@@ -366,9 +365,8 @@ class ZaferHoca:
 
 
 # --------------------------------------------------------------------------
-# Komut satirindan indeksleme:  python zafer_core.py "C:\...\all_materials"
+# Komut satirindan indeksleme: python zafer_core.py "C:\...\all_materials"
 # --------------------------------------------------------------------------
-
 if __name__ == "__main__":
     import sys
 
