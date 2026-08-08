@@ -1,13 +1,13 @@
 """
 streamlit_app.py — Zafer Hoca asistani (Streamlit surumu).
 
-Yerelde:   streamlit run streamlit_app.py
-Bulutta:   GitHub reposuna koy -> share.streamlit.io'dan deploy et.
+Yerelde: streamlit run streamlit_app.py
+Bulutta: GitHub reposuna koy -> share.streamlit.io'dan deploy et.
 
 Notlar:
-  - API anahtari once st.secrets'tan, yoksa .env'den okunur.
-  - Sohbet gecmisi oturum bazlidir: her kullanicinin kendi gecmisi olur.
-  - Streamlit Cloud'un eski sqlite'i icin pysqlite3 yamasi en ustte olmali.
+- API anahtari once st.secrets'tan, yoksa .env'den okunur.
+- Sohbet gecmisi oturum bazlidir: her kullanicinin kendi gecmisi olur.
+- Streamlit Cloud'un eski sqlite'i icin pysqlite3 yamasi en ustte olmali.
 """
 
 # --- ChromaDB / Streamlit Cloud sqlite yamasi (ilk satirlar olmali) ---------
@@ -30,7 +30,8 @@ try:
     _secrets = dict(st.secrets)
 except Exception:
     _secrets = {}
-for opt in ("OPENROUTER_API_KEY", "ZAFER_LLM_MODEL", "ZAFER_EMBED_MODEL", "ZAFER_DB_PATH"):
+
+for opt in ("ANTHROPIC_API_KEY", "ZAFER_LLM_MODEL", "ZAFER_EMBED_MODEL", "ZAFER_DB_PATH"):
     if opt in _secrets:
         os.environ[opt] = str(_secrets[opt])
 
@@ -97,5 +98,5 @@ if prompt:
     with st.chat_message("assistant"):
         with st.spinner("Materyaller taraniyor..."):
             answer = st.session_state.hoca.ask(prompt, attached_text or None)
-        st.markdown(answer)
+            st.markdown(answer)
     st.session_state.messages.append({"role": "assistant", "content": answer})
